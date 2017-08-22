@@ -11,7 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.15.3",
-    "parse-server": "^2.4.2"
+    "express": "^4.15.4",
+    "parse-server": "^2.5.3"
   }
 }

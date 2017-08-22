@@ -8,13 +8,16 @@ var api = new ParseServer({
     appId: config.APP_ID,
     masterKey: config.MASTER_KEY,
     serverURL: config.SERVER_URL,
-    allowClientClassCreation: true
+    allowClientClassCreation: true,
+    liveQuery: {
+        classNames: ['truck']
+    }
 })
 
 var app = express()
 
-app.get('/',(req,res)=>{
-  res.end(`welcome to moverifft ${new Date}`)
+app.get('/', (req, res) => {
+    res.end(`welcome to moverifft ${new Date}`)
 })
 
 app.use('/api', api)
@@ -30,6 +33,10 @@ app.use((err, req, res, next) => {
     res.end(`error: ${JSON.stringify(err)}`)
 })
 
-app.listen(config.PORT, () => {
-    console.log(`listening on port: ${config.PORT}`)
+const server = require('http').createServer(app)
+
+server.listen(config.PORT, () => {
+    console.log(`listening on prot : ${config.PORT}`)
 })
+
+ParseServer.createLiveQueryServer(server)
