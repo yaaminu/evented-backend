@@ -9,8 +9,15 @@ var api = new ParseServer({
     masterKey: config.MASTER_KEY,
     serverURL: config.SERVER_URL,
     allowClientClassCreation: true,
+    cloud: './cloud.js',
     liveQuery: {
         classNames: ['truck']
+    },
+    push: {
+        android: {
+            senderId: '237339047105',
+            apiKey: 'AAAAN0KCdME:APA91bEibpRVsllJNkW_7BbQA1zeebJFjuEmT2ANPdhgRnZR-I2pUQNwlSFBR6eBMipI76SdHiAN0u9rGBA8Hz84Mc6o1nDtourG4PIzh2ULpF4Pg63eTG4s_qsE5CGuyTKqDPd1lGFK'
+        }
     }
 })
 
@@ -21,6 +28,7 @@ app.get('/', (req, res) => {
 })
 
 app.use('/api', api)
+app.use('/', api)
 
 app.use(/.*/, (req, res, next) => {
     next({
