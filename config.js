@@ -5,5 +5,5 @@ exports.APP_ID = process.env.APP_ID ||
     '8rRIZo9dfTmTQ76ZZ8WHmoNejWiAEMJ7y7Bq6531ZpOD5mR9NSXrAm9mBF2lb76O'
 exports.PORT = process.env.PORT || 8080
 exports.CLOUD_CODE_PATH = require('path').resolve(__dirname, 'cloud/main.js')
-exports.SERVER_URL = process.env.SERVER_URL || 'http://localhost:8080/':
+exports.SERVER_URL = process.env.SERVER_URL || 'http://localhost:8080/'
 
