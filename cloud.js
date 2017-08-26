@@ -57,7 +57,7 @@ Parse.Cloud.define('startTrip', (req, res) => {
             trip.set('hiredBy', req.params.hiredBy)
             trip.set('tripName', req.params.tripName)
             trip.set('startLocation', new Parse.GeoPoint(req.params.lat, req.params.long))
-
+            trip.set('driverId', req.user.id)
             truck.set('available', false)
             return Promise.all([trip.save(), truck.save()])
         }).then(objects => {
@@ -119,6 +119,30 @@ Parse.Cloud.define('endTrip', (req, res) => {
 
 })
 
+Parse.Cloud.afterSave('message', req => {
+
+    let object = req.object
+    let query = new Parse.Query(Parse.Installation)
+    query.equalTo('userId', object.get('recipientId'))
+
+    return Parse.Push.send({
+        where: query,
+        priority: 'high',
+        data: {
+            message: {
+                action: 'message',
+                senderId: object.get('senderId'),
+                senderName: object.get('senderName'),
+                messageId: object.get('messageId'),
+                text: object.get('text'),
+                remoteUrl: object.get('remoteUrl'),
+                type: object.get('type'),
+                dateComposed: object.createdAt.getTime()
+            }
+        }
+    }, { useMasterKey: true })
+})
+
 function sendPush(action, query, obj, req) {
     let payload = {
         action: action,
@@ -128,7 +152,8 @@ function sendPush(action, query, obj, req) {
             startTime: obj.createdAt.getTime(),
             truckId: obj.get('truckId'),
             tripName: obj.get('tripName'),
-            tripId: obj.id
+            tripId: obj.id,
+            driverId: obj.get('driverId')
         }
     }
 
