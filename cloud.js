@@ -1,170 +1,95 @@
-Parse.Cloud.define('contactDriver', (req, res) => {
-    console.log(req.params)
-    console.log(req.user)
+const crypto = require('crypto')
+const uuidv5 = require('uuid/v5')
+const randomstring = require('randomstring')
+const bcrypt = require('bcrypt')
 
-    if (!req.user) {
-        return res.error('UnAuthorized')
-    }
+Parse.Cloud.define('verifyNumber', (req, res) => {
 
-    let query = new Parse.Query(Parse.Installation)
-
-    query.equalTo('truckId', req.params.truckId)
-
-    Parse.Push.send({
-        where: query,
-        priority: 'high',
-        data: {
-            message: {
-                action: 'tripRequest',
-                client: {
-                    userId: req.user.id,
-                    name: req.user.get('name')
-                },
-                location: {
-                    lat: req.params.lat,
-                    long: req.params.long
-                },
-                tripName: req.params.tripName
-            }
-        }
-    }, {
-        useMasterKey: true,
-        success: function() {
-            // Push sent!
-            res.success('sent')
-        },
-        error: function(error) {
-            // There was a problem :(
-            res.error(error)
-        }
-    });
-    console.log('sent push')
-})
-
-Parse.Cloud.define('startTrip', (req, res) => {
-    console.log(req.params)
-    console.log(req.user)
-
-    if (!req.user) {
-        return res.error('UnAuthorized')
-    }
-
-    makeParseQuery('truck').get(req.user.get('truckId'))
-        .then(truck => {
-
-            let trip = new(Parse.Object.extend('trip'))()
-            trip.set('truckId', req.params.truckId)
-            trip.set('hiredBy', req.params.hiredBy)
-            trip.set('tripName', req.params.tripName)
-            trip.set('startLocation', new Parse.GeoPoint(req.params.lat, req.params.long))
-            trip.set('driverId', req.user.id)
-            truck.set('available', false)
-            return Promise.all([trip.save(), truck.save()])
-        }).then(objects => {
-            let trip = objects[0] //se the promise above
-
-            let query = new Parse.Query(Parse.Installation)
-            query.equalTo('userId', trip.get('hiredBy'))
-
-            res.success(trip) //tell the  caller
-
-            //TODO schedule this as a job
-            return sendPush('acceptTrip', query, trip, req)
+    let code = randomstring.generate({
+        length: 5,
+        charset: 'numeric'
+    })
+    //TODO remove this
+    console.log('code is ' + code)
+    makeParseQuery('event').get(req.params.eventId)
+        .then(event => {
+            return Promise.all([bcrypt.hash('' + code, 10), event.get('name')])
         })
-        .then(() => {
-            console.log('trip sent successfully')
-        }).catch(err => {
-            res.error(err)
-        })
-})
-
-Parse.Cloud.define('endTrip', (req, res) => {
-    if (!req.user) {
-        return res.error('UnAuthorized')
-    }
-
-    let trip, truck
-    makeParseQuery('trip').get(req.params.tripId)
-        .then(obj => {
-            trip = obj
-            let geoPoint = { lat: req.params.lat, long: req.params.long }
-            console.log(geoPoint)
-            trip.set('endLocation', JSON.stringify(geoPoint))
-            trip.set('endTime', Date.now())
-            return makeParseQuery('truck').get(trip.get('truckId'))
-        }).then(obj => {
-            truck = obj
-            if (req.user.id != truck.get('ownerId')) {
-                console.log(`${req.user.id} !== ${truck.ownerId}`)
-                throw new Error('UnAuthorized')
-            }
-            truck.set('available', true)
-            return Promise.all([trip.save(), truck.save()])
-        }).then(objs => {
-            res.success(objs[0])
-
-            let query = new Parse.Query(Parse.Installation)
-            query.equalTo('userId', objs[0].get('hiredBy'))
-
-            sendPush('endTrip', query, objs[0], req)
-                .then(() => {
-                    console.log('push sent successfull')
-                }, err => {
-                    console.log(`encountered ${err} while sending push`)
-                })
+        .then(saltAndEventName => {
+            let verification = new(Parse.Object.extend('verification'))()
+            verification.set('phoneNumber', req.params.phoneNumber)
+            verification.set('trackingId',
+                uuidv5('http://evented.com/events/ticketing' + req.params.eventId + '/' + crypto.randomBytes(32).toString('base64'), uuidv5.URL))
+            verification.set('eventId', req.params.eventId)
+            verification.set('eventName', saltAndEventName[1])
+            verification.set('verificationCode', saltAndEventName[0])
+            return verification.save()
+        }).then(verification => {
+            return sendSms(verification.get('trackingId'), code)
+        }).then(trackingId => {
+            res.success(trackingId)
         })
         .catch(err => {
             res.error(err)
         })
-
 })
 
-Parse.Cloud.afterSave('message', req => {
-
-    let object = req.object
-    let query = new Parse.Query(Parse.Installation)
-    query.equalTo('userId', object.get('recipientId'))
-
-    return Parse.Push.send({
-        where: query,
-        priority: 'high',
-        data: {
-            message: {
-                action: 'message',
-                senderId: object.get('senderId'),
-                senderName: object.get('senderName'),
-                messageId: object.get('messageId'),
-                text: object.get('text'),
-                remoteUrl: object.get('remoteUrl'),
-                type: object.get('type'),
-                dateComposed: object.createdAt.getTime()
-            }
-        }
-    }, { useMasterKey: true })
-})
-
-function sendPush(action, query, obj, req) {
-    let payload = {
-        action: action,
-        trip: {
-            lat: req.params.lat,
-            long: req.params.long,
-            startTime: obj.createdAt.getTime(),
-            truckId: obj.get('truckId'),
-            tripName: obj.get('tripName'),
-            tripId: obj.id,
-            driverId: obj.get('driverId')
-        }
-    }
-
-    return Parse.Push.send({
-        where: query,
-        priority: 'high',
-        data: {
-            message: payload
-        }
-    }, { useMasterKey: true })
+function sendSms(trackingId, code) {
+    return new Promise((resolve, reject) => {
+        //TODO send SMS
+        return resolve(trackingId)
+    })
 }
+
+function verify(event, trackingId, plainVerificationCode) {
+    return makeParseQuery('verification').equalTo('trackingId', trackingId)
+        .first().then(verification => {
+            console.log(new Date())
+            console.log(verification.createdAt)
+            if (Date.now() - verification.createdAt.getTime() > 1000 * 60 * 5) { //5 minutes
+                return Promise.reject(
+                    'verification code has expired'
+                )
+            }
+
+            return new Promise((res, rej) => {
+                bcrypt.compare(plainVerificationCode, verification.get('verificationCode'))
+                    .then(result => {
+                        if (result) return res(event)
+                        return rej('Incorrect verification code')
+                    })
+            })
+        })
+}
+
+
+Parse.Cloud.define('bookTicket', (req, res) => {
+
+    makeParseQuery('event')
+        .get(req.params.eventId)
+        .then(event => {
+            return verify(event, req.params.trackingId, req.params.verificationCode)
+        })
+        .then(event => {
+            let ticket = new(Parse.Object.extend('ticket'))()
+            ticket.set('eventName', event.get('name'))
+            ticket.set('eventId', event.id)
+
+            //TODO use an atomic id source
+            ticket.set('ticketNumber', event.get('going') + 1)
+            ticket.set('purchasedBy', req.params.billingPhoneNumber)
+            ticket.set('ownerPhone', req.params.buyForNumber)
+            ticket.set('ticketCost', req.params.ticketCost)
+            ticket.set('ticketType', req.params.ticketType)
+            ticket.set('ticketSignature', crypto.createHash('sha256')
+                .update(crypto.randomBytes(32)).digest('hex'))
+            event.increment('going')
+            return Promise.all([event.save(), ticket.save()])
+        }).then(eventAndTicket => { res.success(eventAndTicket[1]) })
+        .catch(err => {
+            res.error(err)
+        })
+})
 
 function makeParseQuery(className) {
     var obj = Parse.Object.extend(className)
